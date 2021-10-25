@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -e
+
+err() {
+  ! echo 'error:' "$@" 1>&2
+}
+
+if [[ "$BASH_VERSINFO" -lt 5 ]]; then
+    [[ "$BASH_VERSINFO" -eq 4 ]] || err 'bash version 4.4 or greater needed'
+    v="${BASH_VERSION#*.}"
+    [[ "${v%.*}" -ge 4 ]] || err 'bash version 4.4 or greater needed'
+fi
+
+hash file || file() { echo 'application/octet-stream'; }
+hash base64 || err 'Unable to find `base64` utility.'
+
+pctdec() {
+    readarray -d '%' -t d <<<"$1"
+    echo -n "${d[0]}"
+    for i in "${d[@]:1}"; do
+        p="\x${i::2}"
+        echo "${p@E}${i:2}"
+    done
+}
+
+isdata() {
+    s="${1%%:*}"
+    [[ "${s,,}" == "data" ]]
+}
+
+decode() {
+    u="$(pctdec "$1")"
+    isdata "$u" || err "Not a data: URL: $i"
+    v="${u#*:}"
+    d="${v#*,}"
+    [[ "$d" != "$v" ]] || err "Missing comma in URL: $i"
+    readarray -d ';' -t a <<<"${v%,*}"
+    for i in "$a"; do
+        if [[ "${i,,}" == "base64" ]]; then
+            echo "$d" | base64 -d
+            return
+        fi
+    done
+    echo "$d"
+}
+
+if [[ "$1" == "--help" ]]; then
+    echo "Encode data URLs: "${0##*/}" [file] ..."
+    echo "Decode data URLs: "${0##*/}" -d [data:...] ..."
+    exit
+fi
+
+if [[ "$1" == "-d" ]]; then
+    shift
+    if [[ "$#" -gt 0 ]]; then
+        for i in "$@"; do decode "$i"; done
+    else
+        while read i; do decode "$i"; done
+    fi
+else
+    if [[ "$#" -eq 0 ]]; then
+        tmp=$(mktemp "/tmp/${0##*/}$$.XXXXX")
+        trap 'rm -f "'"$tmp"'"' EXIT
+        cat >"$tmp"
+        set "$tmp"
+    fi
+    for i in "$@"; do
+        if isdata "$i"; then
+            # Special passthrough for re-encoding of data:
+            echo "$i"
+        else
+            [[ -f "$i" ]] || err "Unable to open \`$i\`."
+            m="$(file -Ebi "$i" | tr -d ' ')"
+            echo "data:${m};base64,$(base64 -w 0 "$i")"
+        fi
+    done
+fi
