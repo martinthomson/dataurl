@@ -9,14 +9,14 @@ err() {
 if [[ "$BASH_VERSINFO" -lt 5 ]]; then
     [[ "$BASH_VERSINFO" -eq 4 ]] || err 'bash version 4.4 or greater needed'
     v="${BASH_VERSION#*.}"
-    [[ "${v%.*}" -ge 4 ]] || err 'bash version 4.4 or greater needed'
+    [[ "${v%%.*}" -ge 4 ]] || err 'bash version 4.4 or greater needed'
 fi
 
 hash file || file() { echo 'application/octet-stream'; }
 hash base64 || err 'Unable to find `base64` utility.'
 
 pctdec() {
-    readarray -d '%' -t d <<<"$1"
+    readarray -d '%' -t d < <(echo -n "$1")
     echo -n "${d[0]}"
     for i in "${d[@]:1}"; do
         p="\x${i::2}"
@@ -35,8 +35,8 @@ decode() {
     v="${u#*:}"
     d="${v#*,}"
     [[ "$d" != "$v" ]] || err "Missing comma in URL: $i"
-    readarray -d ';' -t a <<<"${v%,*}"
-    for i in "$a"; do
+    readarray -d ';' -t a < <(echo -n "${v%%,*}")
+    for i in "${a[@]:1}"; do
         if [[ "${i,,}" == "base64" ]]; then
             echo "$d" | base64 -d
             return
